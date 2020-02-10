@@ -6,6 +6,8 @@ Parameters:
     Type: String
     Description: "Environment Name"
     AllowedValues:
+      - development
+      - staging
       - sandbox
     Default: sandbox
 
@@ -40,7 +42,7 @@ Resources:
         - Fn::ImportValue: !Sub ${EnvironmentName}:PublicSubnetTwo
       SecurityGroups: [!Ref 'PublicLoadBalancerSG']
  
-  APITargetGroup:
+  awsms-target-group:
     Type: AWS::ElasticLoadBalancingV2::TargetGroup
     Properties:
       HealthCheckIntervalSeconds: 6
@@ -61,7 +63,7 @@ Resources:
       Certificates:
         - CertificateArn: arn:aws:acm:us-west-2:160357565307:certificate/6f904ac1-b6e8-46c9-a66c-4a3caba15212 
       DefaultActions:
-        - TargetGroupArn: !Ref 'APITargetGroup'
+        - TargetGroupArn: !Ref 'awsms-target-group'
           Type: 'forward'
       LoadBalancerArn: !Ref 'PublicLoadBalancer'
       Port: 443

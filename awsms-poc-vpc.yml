@@ -7,6 +7,8 @@ Parameters:
     Type: String
     Description: "Environment Name"
     AllowedValues:
+      - development
+      - staging
       - sandbox
     Default: sandbox
 
@@ -33,7 +35,7 @@ Resources:
       CidrBlock: !FindInMap ['SubnetConfig', 'VPC', 'CIDR']
       Tags:
       - Key: Name
-        Value: sandboxvpc
+        Value: awsms-vpc
   PublicSubnetOne:
     Type: AWS::EC2::Subnet
     Properties:
@@ -44,7 +46,7 @@ Resources:
       CidrBlock: !FindInMap ['SubnetConfig', 'PublicOne', 'CIDR']
       Tags:
       - Key: Name
-        Value: AWSMS-POC-public-A
+        Value: awsms-public-A
       MapPublicIpOnLaunch: true
   PublicSubnetTwo:
     Type: AWS::EC2::Subnet
@@ -56,7 +58,7 @@ Resources:
       CidrBlock: !FindInMap ['SubnetConfig', 'PublicTwo', 'CIDR']
       Tags:
       - Key: Name
-        Value: AWSMS-POC-public-B
+        Value: awsms-public-B
       MapPublicIpOnLaunch: true
   PrivateSubnetOne:
     Type: AWS::EC2::Subnet
@@ -68,7 +70,7 @@ Resources:
       CidrBlock: !FindInMap ['SubnetConfig', 'PrivateOne', 'CIDR']
       Tags:
       - Key: Name
-        Value: AWSMS-POC-private-A
+        Value: awsms-private-A
   PrivateSubnetTwo:
     Type: AWS::EC2::Subnet
     Properties:
@@ -79,13 +81,13 @@ Resources:
       CidrBlock: !FindInMap ['SubnetConfig', 'PrivateTwo', 'CIDR']
       Tags:
       - Key: Name
-        Value: AWSMS-POC-private-B
+        Value: awsms-private-B
   InternetGateway:
     Type: AWS::EC2::InternetGateway
     Properties:
       Tags:
        - Key: Name
-         Value: AWSMS-POC-IG
+         Value: awsms-ig
   GatewayAttachement:
     Type: AWS::EC2::VPCGatewayAttachment
     Properties:
@@ -97,7 +99,7 @@ Resources:
       VpcId: !Ref 'VPC'
       Tags:
       - Key: Name
-        Value: AWSMS-POC-publicRT
+        Value: awsms-public-rt
   PublicRoute:
     Type: AWS::EC2::Route
     DependsOn: GatewayAttachement
@@ -132,7 +134,7 @@ Resources:
       SubnetId: !Ref PublicSubnetOne
       Tags:
       - Key: Name
-        Value: AWSMS-POC-NAT-GW-A
+        Value: awsms-nat-A
   NatGatewayTwo:
     Type: AWS::EC2::NatGateway
     Properties:
@@ -140,14 +142,14 @@ Resources:
       SubnetId: !Ref PublicSubnetTwo
       Tags:
       - Key: Name
-        Value: AWSMS-POC-NAT-GW-B
+        Value: awsms-nat-B
   PrivateRouteTableOne:
     Type: AWS::EC2::RouteTable
     Properties:
       VpcId: !Ref 'VPC'
       Tags:
       - Key: Name
-        Value: AWSMS-POC-private-RT-A
+        Value: awsms-private-rt-A
   PrivateRouteOne:
     Type: AWS::EC2::Route
     Properties:
@@ -165,7 +167,7 @@ Resources:
       VpcId: !Ref 'VPC'
       Tags:
       - Key: Name
-        Value: AWSMS-POC-private-RT-B
+        Value: awsms-private-rt-B
   PrivateRouteTwo:
     Type: AWS::EC2::Route
     Properties:

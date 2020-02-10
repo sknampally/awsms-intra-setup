@@ -2,16 +2,18 @@ AWSTemplateFormatVersion: '2010-09-09'
 Description: Create fargate service, task definition, target group, log group, asg for ECS Cluster
 
 Parameters:
-  
+
   EnvironmentName:
     Type: String
     Description: "Environment Name"
     AllowedValues:
+      - development
+      - staging
       - sandbox
     Default: sandbox
   ServiceName:
     Type: String
-    Default: test-awsms-poc
+    Default: awsms-ecs-service
     Description: Name for the service
   ImageUrl:
     Type: String
