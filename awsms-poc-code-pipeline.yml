@@ -1,0 +1,333 @@
+#TaskDefinition: "arn:aws:ecs:region:160357565307:task-definition/test-awsms-poc:2"
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Create CodePipeline and CodeBuild resources for Blue/Green Deployment on ECS. For further reference, please review BluegreenRepo
+
+Parameters:
+
+  GitHubRepo:
+    Type: String
+    Description: "GitHubRepo"
+    Default: sknampally/awsms-poc-springboot
+
+  GitHubBranch:
+    Type: String
+    Description: "GitHubBranch"
+    AllowedValues:
+      - master
+    Default: master
+
+  GitHubToken:
+    Type: String
+
+  GitHubUser:
+    Type: String
+
+  TemplateBucket:
+    Type: String
+
+  PublicSubnetOne:
+    Type: AWS::EC2::Subnet::Id
+
+  PublicSubnetTwo:
+    Type: AWS::EC2::Subnet::Id
+
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+
+  VpcCIDR:
+    Type: String
+
+Resources:
+
+  Repository:
+    Type: AWS::ECR::Repository
+    DeletionPolicy: Retain
+
+  CloudFormationExecutionRole:
+    Type: AWS::IAM::Role
+    DeletionPolicy: Retain
+    Properties:
+      #RoleName: !Sub cfn-${AWS::StackName}
+      Path: /
+      AssumeRolePolicyDocument: |
+        {
+            "Statement": [{
+                "Effect": "Allow",
+                "Principal": { "Service": [ "cloudformation.amazonaws.com" ]},
+                "Action": [ "sts:AssumeRole" ]
+            }]
+        }
+      Policies:
+        - PolicyName: root
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Resource: "*"
+                Effect: Allow
+                Action:
+                  - ecs:*
+                  - ecr:*
+                  - iam:*
+                  - ec2:*
+                  - elasticloadbalancing:*
+                  - autoscaling:*
+
+  CodeBuildServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      #RoleName: !Sub cb-${AWS::StackName}
+      Path: /
+      AssumeRolePolicyDocument: |
+        {
+            "Statement": [{
+                "Effect": "Allow",
+                "Principal": { "Service": [ "codebuild.amazonaws.com" ]},
+                "Action": [ "sts:AssumeRole" ]
+            }]
+        }
+      Policies:
+        - PolicyName: root
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Resource: "*"
+                Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                  - ecr:GetAuthorizationToken
+                  - cloudformation:Describe*
+                  - elasticloadbalancing:Describe*
+                  - codepipeline:Get*
+                  - codebuild:BatchGetBuilds
+              - Resource: !Sub arn:aws:s3:::${ArtifactBucket}/*
+                Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                  - s3:GetObjectVersion
+              - Resource: !Sub arn:aws:ecr:${AWS::Region}:${AWS::AccountId}:repository/${Repository}
+                Effect: Allow
+                Action:
+                  - ecr:GetDownloadUrlForLayer
+                  - ecr:BatchGetImage
+                  - ecr:BatchCheckLayerAvailability
+                  - ecr:PutImage
+                  - ecr:InitiateLayerUpload
+                  - ecr:UploadLayerPart
+                  - ecr:CompleteLayerUpload
+
+  CodePipelineServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      #RoleName: !Sub cp-${AWS::StackName}
+      Path: /
+      AssumeRolePolicyDocument: |
+        {
+            "Statement": [{
+                "Effect": "Allow",
+                "Principal": { "Service": [ "codepipeline.amazonaws.com" ]},
+                "Action": [ "sts:AssumeRole" ]
+            }]
+        }
+      Policies:
+        - PolicyName: root
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Resource:
+                  - !Sub arn:aws:s3:::${ArtifactBucket}/*
+                  - !Sub arn:aws:s3:::${TemplateBucket}
+                  - !Sub arn:aws:s3:::${TemplateBucket}/*
+                Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:GetObject
+                  - s3:GetObjectVersion
+                  - s3:GetBucketVersioning
+              - Resource: "*"
+                Effect: Allow
+                Action:
+                  - codebuild:StartBuild
+                  - codebuild:BatchGetBuilds
+                  - cloudformation:*
+                  - lambda:*
+                  - iam:PassRole
+
+  ArtifactBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+
+  CodeBuildProject:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Artifacts:
+        Type: GITHUB
+      Source:
+        Type: GITHUB
+        Location: https://github.com/sknampally/awsms-poc-springboot.git
+        BuildSpec: |
+          version: 0.1
+          phases:
+            pre_build:
+              commands:
+                - echo Logging in to Amazon ECR...
+                - aws --version
+                - $(aws ecr get-login  --no-include-email --region us-west-2)
+                - REPOSITORY_URI=160357565307.dkr.ecr.us-west-2.amazonaws.com/awsms-poc-springboot
+                - COMMIT_HASH=$(echo $CODEBUILD_RESOLVED_SORCUE_VERSION | cut -c 1-7)
+                - IMAGE_TAG=build-$(echo $CODEBUILD_BUILD_ID | awk -F":" '{print $2}')
+            build:
+              commands:
+                - echo Build started on `date`
+                - echo Building the Docker image...
+                - docker build -t $REPOSITORY_URI:latest .
+                - docker tag $REPOSITORY_URI:latest $REPOSITORY_URI:$IMAGE_TAG
+            post_build:
+              commands:
+                - echo Build completed on `date`
+                - echo Pushing the Docker images...
+                - docker push $REPOSITORY_URI:latest
+                - docker push $REPOSITORY_URI:$IMAGE_TAG
+                - echo Writing image definitions file...
+                - printf '[{"name":"springbootapp","imageUri":"%s"}]' $REPOSITORY_URI:$IMAGE_TAG > imagedefinitions.json
+                - cat imagedefinitions.json 
+            artifacts:
+              files: imagedefinitions.json
+      Environment:
+        ComputeType: "BUILD_GENERAL1_SMALL"
+        Image: "aws/codebuild/docker:1.12.1"
+        Type: "LINUX_CONTAINER"
+        EnvironmentVariables:
+          - Name: AWS_DEFAULT_REGION
+            Value: !Ref AWS::Region
+          - Name: REPOSITORY_URI
+            Value: !Sub ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${Repository}
+      Name: !Sub ${AWS::StackName}-codebuildproject
+      ServiceRole: !Ref CodeBuildServiceRole
+
+  #BlueGreenElbDiscovery:
+   # Type: AWS::CodeBuild::Project
+    #Properties:
+     # Artifacts:
+      #  Type: CODEPIPELINE
+      #Source:
+       # Type: CODEPIPELINE
+        #BuildSpec: |
+         # version: 0.1
+          #phases:
+           # install:
+            #  commands:
+             #   - pip install --upgrade python
+              #  - pip install --upgrade awscli
+               # - pip install --upgrade boto3
+          #  pre_build:
+           #   commands:
+            #    - printenv
+             #   - ls -ld $(find .)
+              #  - python deployer.py
+          #artifacts:
+           # files: cf_inputs.json
+            #discard-paths: yes
+      #Environment:
+       # ComputeType: "BUILD_GENERAL1_SMALL"
+        #Image: aws/codebuild/python:2.7.12
+        #Type: "LINUX_CONTAINER"
+        #EnvironmentVariables:
+         # - Name: AWS_DEFAULT_REGION
+          #  Value: !Ref AWS::Region
+        #  - Name: ELB_NAME
+         #   Value: !Ref GitHubRepo
+      #Name: !Sub ${AWS::StackName}-discoveryproject
+      #ServiceRole: !Ref CodeBuildServiceRole
+
+  Pipeline:
+    Type: AWS::CodePipeline::Pipeline
+    Properties:
+      RoleArn: !GetAtt CodePipelineServiceRole.Arn
+      ArtifactStore:
+        Type: S3
+        Location: !Ref ArtifactBucket
+      Stages:
+        - Name: Source
+          Actions:
+            - Name: App
+              ActionTypeId:
+                Category: Source
+                Owner: ThirdParty
+                Version: 1
+                Provider: GitHub
+              Configuration:
+                Owner: !Ref GitHubUser
+                Repo: !Ref GitHubRepo
+                Branch: !Ref GitHubBranch
+                OAuthToken: !Ref GitHubToken
+              OutputArtifacts:
+                - Name: App
+              RunOrder: 1
+            - Name: Template
+              ActionTypeId:
+                Category: Source
+                Owner: AWS
+                Version: 1
+                Provider: S3
+              OutputArtifacts:
+                - Name: Template
+              RunOrder: 1
+              Configuration:
+                S3Bucket: !Ref TemplateBucket
+                S3ObjectKey: templates.zip
+            - Name: Scripts
+              ActionTypeId:
+                Category: Source
+                Owner: AWS
+                Version: 1
+                Provider: S3
+              OutputArtifacts:
+                - Name: Scripts
+              RunOrder: 1
+              Configuration:
+                S3Bucket: !Ref TemplateBucket
+                S3ObjectKey: scripts.zip
+        - Name: Build
+          Actions:
+            - Name: Build
+              ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Version: 1
+                Provider: CodeBuild
+              Configuration:
+                ProjectName: !Ref CodeBuildProject
+              InputArtifacts:
+                - Name: App
+              OutputArtifacts:
+                - Name: BuildOutput
+              RunOrder: 1
+
+        - Name: Deploy-Approve-Swap
+          Actions:
+            - Name: Deploy
+              ActionTypeId:
+                Category: Deploy
+                Owner: AWS
+                Version: 1
+                Provider: CloudFormation
+              Configuration:
+                ChangeSetName: Deploy
+                ActionMode: CREATE_UPDATE
+                StackName: !Sub "${AWS::StackName}-ecs-cluster"
+                Capabilities: CAPABILITY_NAMED_IAM
+                TemplatePath: Template::templates/ecs-cluster.yaml
+                RoleArn: !GetAtt CloudFormationExecutionRole.Arn
+                ParameterOverrides: !Sub |
+                  {
+                      "Repository": "${Repository}",
+                      "GitHubRepo": "${GitHubRepo}",
+                      "TemplateBucket": "${TemplateBucket}"
+                  }
+
+Outputs:
+  PipelineUrl:
+    Value: !Sub https://console.aws.amazon.com/codepipeline/home?region=${AWS::Region}#/view/${Pipeline}
