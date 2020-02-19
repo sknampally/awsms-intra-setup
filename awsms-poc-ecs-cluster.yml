@@ -6,9 +6,9 @@ Parameters:
     Type: String
     Description: "Environment Name"
     AllowedValues:
+      - sandbox
       - development
       - staging
-      - sandbox
     Default: sandbox
 
 Resources:
