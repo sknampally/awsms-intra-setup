@@ -180,6 +180,17 @@ Resources:
       RouteTableId: !Ref PrivateRouteTableTwo
       SubnetId: !Ref PrivateSubnetTwo
 
+  VPCEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties: 
+      PrivateDnsEnabled: false
+      RouteTableIds: 
+        - !Ref PrivateRouteTableOne
+        - !Ref PrivateRouteTableTwo
+      ServiceName: com.amazonaws.us-west-2.s3
+      VpcEndpointType: Gateway
+      VpcId: !Ref 'VPC' 
+
 Outputs:
   VpcId:
     Description: The ID of the VPC that this stack is deployed in
