@@ -15,12 +15,6 @@ Parameters:
     NoEcho: true
   GitHubUser:
     Type: String
-  Cluster:
-    Type: String
-    Default: sandbox-AWSMS-POC-cluster
-  Service:
-    Type: String
-    Default: test-awsms-poc
   PublicSubnetOne:
     Type: AWS::EC2::Subnet::Id
   PublicSubnetTwo:
@@ -233,9 +227,11 @@ Resources:
                 Version: 1
                 Provider: ECS
               Configuration:
-                ClusterName: !Ref Cluster
-                ServiceName: !Ref Service
-                FileName: images.json
+                ClusterName: 
+                  'Fn::ImportValue': !Sub '${EnvironmentName}:ClusterName'
+                ServiceName: 
+                  'Fn::ImportValue': !Sub '${EnvironmentName}:ServiceName'
+                FileName: 
               InputArtifacts:
                 - Name: BuildOutput
               RunOrder: 1
