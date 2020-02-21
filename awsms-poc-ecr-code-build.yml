@@ -1,0 +1,139 @@
+AWSTemplateFormatVersion: 2010-09-09
+Parameters:
+  GitHubRepo:
+    Type: String
+    Description: "GitHubRepo"
+    Default: sknampally/awsms-poc-springboot
+  GitHubBranch:
+    Type: String
+    Description: "GitHubBranch"
+    AllowedValues:
+      - master
+    Default: master
+  GitHubToken:
+    Type: String
+    NoEcho: true
+  GitHubUser:
+    Type: String
+  TemplateBucket:
+    Type: String
+Resources:
+  Repository:
+    Type: AWS::ECR::Repository
+    DeletionPolicy: Retain
+    Properties:
+      RepositoryName: awsms-poc-springboot
+  CloudFormationExecutionRole:
+    Type: AWS::IAM::Role
+    DeletionPolicy: Retain
+    Properties:
+      #RoleName: !Sub cfn-${AWS::StackName}
+      Path: /
+      AssumeRolePolicyDocument: |
+        {
+            "Statement": [{
+                "Effect": "Allow",
+                "Principal": { "Service": [ "cloudformation.amazonaws.com" ]},
+                "Action": [ "sts:AssumeRole" ]
+            }]
+        }
+      Policies:
+        - PolicyName: root
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Resource: "*"
+                Effect: Allow
+                Action:
+                  - ecs:*
+                  - ecr:*
+                  - iam:*
+                  - ec2:*
+                  - elasticloadbalancing:*
+                  - autoscaling:*
+  ArtifactBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+  CodeBuildServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Path: /
+      ManagedPolicyArns:
+          - "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryFullAccess"
+          - "arn:aws:iam::aws:policy/AdministratorAccess"
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: codebuild.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: root
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Resource: "*"
+                Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                  - ecr:GetAuthorizationToken
+              - Resource: !Sub arn:aws:s3:::${ArtifactBucket}/*
+                Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                  - s3:GetObjectVersion
+              - Resource: "*"
+                Effect: Allow
+                Action:
+                  - "ecr:GetAuthorizationToken"
+                  - "ecr:BatchCheckLayerAvailability"
+                  - "ecr:GetDownloadUrlForLayer"
+                  - "ecr:GetRepositoryPolicy"
+                  - "ecr:DescribeRepositories"
+                  - "ecr:ListImages"
+                  - "ecr:DescribeImages"
+                  - "ecr:BatchGetImage"
+                  - "ecr:GetLifecyclePolicy"
+                  - "ecr:GetLifecyclePolicyPreview"
+                  - "ecr:ListTagsForResource"
+                  - "ecr:DescribeImageScanFindings"
+                  - "ecr:InitiateLayerUpload"
+                  - "ecr:UploadLayerPart"
+                  - "ecr:CompleteLayerUpload"
+                  - "ecr:PutImage"
+              - Resource: "*"
+                Effect: Allow
+                Action:
+                   - "ecr:*"
+                   - "cloudtrail:LookupEvents"
+                Resource: arn:aws:logs:us-west-2:160357565307:log-group:/aws/codebuild/Sample-CodeBuildProject
+  CodeBuildProject:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Name: awsms-code-build
+      ServiceRole: !GetAtt CodeBuildServiceRole.Arn
+      Artifacts:
+        Type: no_artifacts
+      Environment:
+        Type: LINUX_CONTAINER
+        ComputeType: BUILD_GENERAL1_SMALL
+        Image: aws/codebuild/standard:2.0
+        PrivilegedMode: true
+      Source:
+        Auth:
+          Type: OAUTH
+        Location: https://github.com/sknampally/awsms-poc-springboot.git
+        Type: GITHUB
+      Triggers:
+        Webhook: true
+      TimeoutInMinutes: 10
+Outputs:
+  Repository:
+    Description: The name of the ECR Repository
+    Value: !Ref Repository
+    Export:
+      Name: !Sub 'RepositoryName'

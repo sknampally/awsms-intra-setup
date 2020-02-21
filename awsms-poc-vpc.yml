@@ -11,7 +11,7 @@ Parameters:
       - staging
       - sandbox
     Default: sandbox
-
+    
 Mappings: 
   SubnetConfig:
     VPC:
@@ -187,7 +187,7 @@ Resources:
       RouteTableIds: 
         - !Ref PrivateRouteTableOne
         - !Ref PrivateRouteTableTwo
-      ServiceName: com.amazonaws.us-west-2.s3
+      ServiceName: !Sub com.amazonaws.${AWS::Region}.s3
       VpcEndpointType: Gateway
       VpcId: !Ref 'VPC' 
 
