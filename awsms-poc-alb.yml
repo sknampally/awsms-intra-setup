@@ -10,9 +10,6 @@ Parameters:
       - development
       - staging
     Default: sandbox
-  CertificateArn:
-    Type: String
-    Description: "Certificate Arn"
 
 Resources:
   EcsSecurityGroupIngressFromPublicALB:
@@ -32,22 +29,10 @@ Resources:
         Fn::ImportValue: !Sub ${EnvironmentName}:VpcId
       SecurityGroupIngress:          
             - CidrIp: 0.0.0.0/0
-              IpProtocol: tcp
-              FromPort: 80
-              ToPort: 80
-            - CidrIp: 0.0.0.0/0
-              IpProtocol: tcp
-              FromPort: 443
-              ToPort: 443
-            - CidrIp: 0.0.0.0/0
-              IpProtocol: tcp
-              FromPort: 5030
-              ToPort: 5030
-
+              IpProtocol: -1
   PublicLoadBalancer:
     Type: AWS::ElasticLoadBalancingV2::LoadBalancer
     Properties:
-      Name: awsms-springboot-alb
       Scheme: internet-facing
       LoadBalancerAttributes:
       - Key: idle_timeout.timeout_seconds
@@ -60,7 +45,6 @@ Resources:
   APITargetGroup:
     Type: AWS::ElasticLoadBalancingV2::TargetGroup
     Properties:
-      Name: awsms-alb-tg
       HealthCheckIntervalSeconds: 6
       HealthCheckPath: /
       HealthCheckProtocol: HTTP
@@ -71,14 +55,13 @@ Resources:
       UnhealthyThresholdCount: 2
       VpcId:
         Fn::ImportValue: !Sub ${EnvironmentName}:VpcId
-
   PublicLoadBalancerListener:
     Type: AWS::ElasticLoadBalancingV2::Listener
     DependsOn:
       - PublicLoadBalancer
     Properties:
       Certificates:
-        - CertificateArn: !Ref 'CertificateArn' 
+        - CertificateArn: arn:aws:acm:us-west-2:160357565307:certificate/6f904ac1-b6e8-46c9-a66c-4a3caba15212 
       DefaultActions:
         - TargetGroupArn: !Ref 'APITargetGroup'
           Type: 'forward'
