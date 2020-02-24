@@ -25,34 +25,6 @@ Resources:
     DeletionPolicy: Retain
     Properties:
       RepositoryName: awsms-poc-springboot
-  CloudFormationExecutionRole:
-    Type: AWS::IAM::Role
-    DeletionPolicy: Retain
-    Properties:
-      #RoleName: !Sub cfn-${AWS::StackName}
-      Path: /
-      AssumeRolePolicyDocument: |
-        {
-            "Statement": [{
-                "Effect": "Allow",
-                "Principal": { "Service": [ "cloudformation.amazonaws.com" ]},
-                "Action": [ "sts:AssumeRole" ]
-            }]
-        }
-      Policies:
-        - PolicyName: root
-          PolicyDocument:
-            Version: 2012-10-17
-            Statement:
-              - Resource: "*"
-                Effect: Allow
-                Action:
-                  - ecs:*
-                  - ecr:*
-                  - iam:*
-                  - ec2:*
-                  - elasticloadbalancing:*
-                  - autoscaling:*
   ArtifactBucket:
     Type: AWS::S3::Bucket
     DeletionPolicy: Retain
