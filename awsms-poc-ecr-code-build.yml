@@ -1,6 +1,6 @@
 AWSTemplateFormatVersion: 2010-09-09
 Description: >-
-  Launches ECR Repository, Code build
+  Create ECR Repository, Code build
 Parameters:
   GitHubRepo:
     Type: String
@@ -34,6 +34,7 @@ Resources:
       Path: /
       ManagedPolicyArns:
           - "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryFullAccess"
+          - "arn:aws:iam::aws:policy/AdministratorAccess"
       AssumeRolePolicyDocument:
         Version: 2012-10-17
         Statement:
@@ -59,6 +60,8 @@ Resources:
                   - s3:GetObject
                   - s3:PutObject
                   - s3:GetObjectVersion
+                  - s3:ListObjects
+                  - s3:ListBucket
               - Resource: "*"
                 Effect: Allow
                 Action:
@@ -102,7 +105,15 @@ Resources:
         Location: https://github.com/sknampally/awsms-poc-springboot.git
         Type: GITHUB
       Triggers:
-        Webhook: true
+        Webhook: false
+        #FilterGroups:
+        #- - Type: EVENT
+            #Pattern: PUSH
+          #- Type: HEAD_REF
+            #Pattern: ^refs/heads/.*
+          #- Type: FILE_PATH
+            #Pattern: READ_ME
+            #ExcludeMatchedPattern: true
       TimeoutInMinutes: 10
 Outputs:
   Repository:
@@ -110,3 +121,8 @@ Outputs:
     Value: !Ref Repository
     Export:
       Name: !Sub 'RepositoryName'
+  BuildProject:
+    Description: The name of the Code build
+    Value: !Ref CodeBuildProject
+    Export:
+      Name: 'CodeBuildProject'
