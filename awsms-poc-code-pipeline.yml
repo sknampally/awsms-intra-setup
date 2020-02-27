@@ -15,22 +15,16 @@ Parameters:
     NoEcho: true
   GitHubUser:
     Type: String
-  PublicSubnetOne:
-    Type: AWS::EC2::Subnet::Id
-  PublicSubnetTwo:
-    Type: AWS::EC2::Subnet::Id
-  VpcId:
-    Type: AWS::EC2::VPC::Id
-  VpcCIDR:
+  Cluster:
     Type: String
+  Service:
+    Type: String
+  CodeBuildProject:
+    Type: String
+    Default: awsms-code-build
   TemplateBucket:
     Type: String
 Resources:
-  Repository:
-    Type: AWS::ECR::Repository
-    DeletionPolicy: Retain
-    Properties:
-      RepositoryName: !Ref AWS::StackName
   CloudFormationExecutionRole:
     Type: AWS::IAM::Role
     DeletionPolicy: Retain
@@ -62,63 +56,21 @@ Resources:
   ArtifactBucket:
     Type: AWS::S3::Bucket
     DeletionPolicy: Retain
-  CodeBuildServiceRole:
-    Type: AWS::IAM::Role
+  
+  GithubWebhook:
+    Type: 'AWS::CodePipeline::Webhook'
     Properties:
-      Path: /
-      ManagedPolicyArns:
-          - "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryFullAccess"
-          - "arn:aws:iam::aws:policy/AdministratorAccess"
-      AssumeRolePolicyDocument:
-        Version: 2012-10-17
-        Statement:
-          - Effect: Allow
-            Principal:
-              Service: codebuild.amazonaws.com
-            Action: sts:AssumeRole
-      Policies:
-        - PolicyName: root
-          PolicyDocument:
-            Version: 2012-10-17
-            Statement:
-              - Resource: "*"
-                Effect: Allow
-                Action:
-                  - logs:CreateLogGroup
-                  - logs:CreateLogStream
-                  - logs:PutLogEvents
-                  - ecr:GetAuthorizationToken
-              - Resource: !Sub arn:aws:s3:::${ArtifactBucket}/*
-                Effect: Allow
-                Action:
-                  - s3:GetObject
-                  - s3:PutObject
-                  - s3:GetObjectVersion
-              - Resource: "*"
-                Effect: Allow
-                Action:
-                  - "ecr:GetAuthorizationToken"
-                  - "ecr:BatchCheckLayerAvailability"
-                  - "ecr:GetDownloadUrlForLayer"
-                  - "ecr:GetRepositoryPolicy"
-                  - "ecr:DescribeRepositories"
-                  - "ecr:ListImages"
-                  - "ecr:DescribeImages"
-                  - "ecr:BatchGetImage"
-                  - "ecr:GetLifecyclePolicy"
-                  - "ecr:GetLifecyclePolicyPreview"
-                  - "ecr:ListTagsForResource"
-                  - "ecr:DescribeImageScanFindings"
-                  - "ecr:InitiateLayerUpload"
-                  - "ecr:UploadLayerPart"
-                  - "ecr:CompleteLayerUpload"
-                  - "ecr:PutImage"
-              - Resource: "*"
-                Effect: Allow
-                Action:
-                   - "ecr:*"
-                   - "cloudtrail:LookupEvents"
-                Resource: arn:aws:logs:us-west-2:160357565307:log-group:/aws/codebuild/Sample-CodeBuildProject
+      Authentication: GITHUB_HMAC
+      AuthenticationConfiguration:
+        SecretToken: !Ref GitHubToken
+      #RegisterWithThirdParty: 'true'
+      Filters:
+      - JsonPath: "$.ref"
+        MatchEquals: refs/heads/{Branch}
+      TargetPipeline: !Ref Pipeline
+      TargetAction: App
+      TargetPipelineVersion: !GetAtt Pipeline.Version
+  
   CodePipelineServiceRole:
     Type: AWS::IAM::Role
     Properties:
@@ -142,6 +94,7 @@ Resources:
             Statement:
               - Resource:
                   - !Sub arn:aws:s3:::${ArtifactBucket}/*
+                  - !Sub arn:aws:s3:::${ArtifactBucket}
                   - !Sub arn:aws:s3:::${TemplateBucket}
                   - !Sub arn:aws:s3:::${TemplateBucket}/*
                 Effect: Allow
@@ -150,6 +103,8 @@ Resources:
                   - s3:GetObject
                   - s3:GetObjectVersion
                   - s3:GetBucketVersioning
+                  - s3:ListObjects
+                  - s3:ListBucket
               - Resource: "*"
                 Effect: Allow
                 Action:
@@ -158,30 +113,19 @@ Resources:
                   - cloudformation:*
                   - lambda:*
                   - iam:PassRole
-  CodeBuildProject:
-    Type: AWS::CodeBuild::Project
-    Properties:
-      Name: Sample-CodeBuildProject
-      ServiceRole: !GetAtt CodeBuildServiceRole.Arn
-      Artifacts:
-        Type: no_artifacts
-      Environment:
-        Type: LINUX_CONTAINER
-        ComputeType: BUILD_GENERAL1_SMALL
-        Image: aws/codebuild/standard:2.0
-        PrivilegedMode: true
-      Source:
-        Auth:
-          Type: OAUTH
-        Location: https://github.com/sknampally/awsms-poc-springboot.git
-        Type: GITHUB
-      Triggers:
-        Webhook: true
-      TimeoutInMinutes: 10
+                  - ecs:DescribeServices
+                  - ecs:DescribeTaskDefinition
+                  - ecs:DescribeTasks
+                  - ecs:ListTasks
+                  - ecs:RegisterTaskDefinition
+                  - ecs:UpdateService
+                  - ecs:*
+  
   Pipeline:
     Type: AWS::CodePipeline::Pipeline
+    #DependsOn: GithubWebhook
     Properties:
-      Name: github-events-pipeline
+      Name: awsms-pipeline
       RoleArn: !GetAtt CodePipelineServiceRole.Arn
       ArtifactStore:
         Type: S3
@@ -200,6 +144,7 @@ Resources:
                 Repo: !Ref GitHubRepo
                 Branch: !Ref GitHubBranch
                 OAuthToken: !Ref GitHubToken
+                PollForSourceChanges: false
               OutputArtifacts:
                 - Name: App
               RunOrder: 1
@@ -227,11 +172,9 @@ Resources:
                 Version: 1
                 Provider: ECS
               Configuration:
-                ClusterName: 
-                  'Fn::ImportValue': !Sub '${EnvironmentName}:ClusterName'
-                ServiceName: 
-                  'Fn::ImportValue': !Sub '${EnvironmentName}:ServiceName'
-                FileName: 
+                ClusterName: !Ref Cluster
+                ServiceName: !Ref Service
+                FileName: imagedefinitions.json
               InputArtifacts:
                 - Name: BuildOutput
               RunOrder: 1
